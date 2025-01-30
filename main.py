@@ -13,14 +13,10 @@ pygame.display.set_caption("Across the sky")
 black = (0, 0, 0)
 white = (255, 255, 255)
 red = (255, 0, 0)
-blue = (0, 0, 255)
+green = (0, 255, 0)
 
 
-def draw_text(text, font, color, x, y):
-    surface = font.render(text, True, color)
-    screen.blit(surface, (x, y))
-
-
+# генерация фона
 def create_gradient(surface):
     for y in range(surface.get_height()):
         color = (0, 0, int(255 * (y / surface.get_height())))
@@ -30,92 +26,52 @@ def create_gradient(surface):
 background = pygame.Surface((screen_width, screen_height))
 create_gradient(background)
 
+# Параметры звёзд
+num_stars = 100
+stars = []
 
-def main_menu():
-    menu_font = pygame.font.Font(None, 50)
-    running = True
-    while running:
-        screen.fill(black)
-        draw_text("Across the Sky", menu_font, white, screen_width // 3, 100)
-        draw_text("Нажмите ENTER, чтобы начать", menu_font, white, screen_width // 4, 250)
-        draw_text("Нажмите ESC, чтобы выйти", menu_font, white, screen_width // 4, 300)
-        pygame.display.update()
+for _ in range(num_stars):
+    x = random.randint(0, screen_width)
+    y = random.randint(0, screen_height)
+    stars.append([x, y])
 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_RETURN:
-                    return  # Запуск игры
-                if event.key == pygame.K_ESCAPE:
-                    pygame.quit()
-                    sys.exit()
-
-
-main_menu()
+star_speed = 5
 
 # Параметры персонажа
 circle_radius = 20
 circle_x = screen_width // 2
 circle_y = screen_height // 2
 circle_speed = 7
-player_health = 10
 
 # Параметры пуль
 bullets = []
 bullet_speed = -10
 
-
 # Параметры врагов
-class Enemy:
-    def __init__(self, x, y, health, speed, color, attack_type):
-        self.rect = pygame.Rect(x, y, 30, 30)
-        self.health = health
-        self.speed = speed
-        self.color = color
-        self.attack_type = attack_type
-
-    def move(self):
-        if self.attack_type == "kamikaze":
-            direction_x = (circle_x - self.rect.x) / max(1, abs(circle_x - self.rect.x))
-            direction_y = (circle_y - self.rect.y) / max(1, abs(circle_y - self.rect.y))
-            self.rect.x += int(direction_x * self.speed)
-            self.rect.y += int(direction_y * self.speed)
-        elif self.attack_type == "homing":
-            self.rect.y += self.speed
-            if self.rect.x < circle_x:
-                self.rect.x += 1
-            elif self.rect.x > circle_x:
-                self.rect.x -= 1
-
-    def attack(self):
-        if self.attack_type == "homing":
-            enemy_bullets.append([self.rect.centerx, self.rect.bottom])
-
-
 enemies = []
-enemy_bullets = []
-enemy_spawn_rate = 30
+enemy_size = 30
+enemy_spawn_rate = 30  # каждые 30 кадров
+enemy_speed = 3
 enemy_timer = 0
 
 
-def spawn_enemy():
-    enemy_type = random.choice(["kamikaze", "homing"])
-    x = random.randint(0, screen_width - 30)
-    if enemy_type == "kamikaze":
-        enemies.append(Enemy(x, 0, 1, 5, white, "kamikaze"))
-    elif enemy_type == "homing":
-        enemies.append(Enemy(x, 0, 2, 2, blue, "homing"))
+# Параметры врагов и их здоровье
+class Enemy:
+    def __init__(self, x, y):
+        self.rect = pygame.Rect(x, y, enemy_size, enemy_size)
+        self.health = 5  # Здоровье врага
 
 
+# Цикл игры
 clock = pygame.time.Clock()
+
 while True:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             pygame.quit()
             sys.exit()
 
+    # Управление персонажем
     keys = pygame.key.get_pressed()
     if keys[pygame.K_LEFT] and circle_x - circle_radius > 0:
         circle_x -= circle_speed
@@ -125,59 +81,68 @@ while True:
         circle_y -= circle_speed
     if keys[pygame.K_DOWN] and circle_y + circle_radius < screen_height:
         circle_y += circle_speed
+
+    # Стрельба
     if keys[pygame.K_SPACE]:
-        bullets.append(pygame.Rect(circle_x - 5, circle_y - 10, 10, 10))
+        bullets.append([circle_x, circle_y])  # Добавление пули в список
 
-    bullets = [b.move(0, bullet_speed) for b in bullets if b.y > 0]
+    # Обновление положения пуль
+    for bullet in bullets[:]:
+        bullet[1] += bullet_speed
+        if bullet[1] < 0:  # Удаление ненужных пуль
+            bullets.remove(bullet)
 
+    # Обновление положения врагов
     enemy_timer += 1
     if enemy_timer >= enemy_spawn_rate:
-        spawn_enemy()
+        enemy_x = random.randint(0, screen_width - enemy_size)
+        enemies.append(Enemy(enemy_x, 0))
         enemy_timer = 0
 
     for enemy in enemies[:]:
-        enemy.move()
-        to_remove = []  # Список для удаления врагов
-        for enemy in enemies[:]:
-            enemy.move()
+        enemy.rect.y += enemy_speed
+        if enemy.rect.y > screen_height:
+            enemies.remove(enemy)
 
-            # Проверка столкновения камикадзе с игроком
-            if enemy.rect.colliderect(
-                    pygame.Rect(circle_x - 20, circle_y - 20, 40, 40)) and enemy.attack_type == "kamikaze":
-                player_health -= 2
-                to_remove.append(enemy)
+        # Система пуль
+        for bullet in bullets[:]:
+            bullet_rect = pygame.Rect(bullet[0] - 5, bullet[1] - 5, 10, 10)
+            if enemy.rect.colliderect(bullet_rect):
+                enemy.health -= 1
+                bullets.remove(bullet)
+                if enemy.health <= 0:
+                    enemies.remove(enemy)
+                break
 
-            # Проверка попадания пуль
-            for bullet in bullets[:]:
-                if enemy.rect.colliderect(bullet):
-                    enemy.health -= 1
-                    bullets.remove(bullet)
-                    if enemy.health <= 0:
-                        to_remove.append(enemy)  # Добавляем в список на удаление
+    # Обновление положения звёзд
+    for star in stars:
+        star[1] += star_speed
+        if star[1] > screen_height:
+            star[1] = random.randint(-20, 0)  # Сброс звезды на верх экрана
+            star[0] = random.randint(0, screen_width)
 
-        # Удаляем всех врагов после прохода по списку
-        for enemy in to_remove:
-            if enemy in enemies:  # Проверяем, есть ли враг в списке перед удалением
-                enemies.remove(enemy)
-
-    for bullet in enemy_bullets[:]:
-        bullet[1] += 5
-        if pygame.Rect(bullet[0] - 5, bullet[1] - 5, 10, 10).colliderect(
-                pygame.Rect(circle_x - 20, circle_y - 20, 40, 40)):
-            player_health -= 1
-            enemy_bullets.remove(bullet)
-        if bullet[1] > screen_height:
-            enemy_bullets.remove(bullet)
 
     screen.blit(background, (0, 0))
+
+    for star in stars:
+        pygame.draw.circle(screen, white, (star[0], star[1]), 2)  # Рисуем звезды
+
+    # Генерация врагов
     for enemy in enemies:
-        pygame.draw.rect(screen, enemy.color, enemy.rect)
-    for bullet in bullets:
-        pygame.draw.rect(screen, white, bullet)
-    for bullet in enemy_bullets:
-        pygame.draw.circle(screen, red, (bullet[0], bullet[1]), 5)
+        pygame.draw.rect(screen, green, enemy.rect)
+
+    # Персонаж (для теста в виде круга)
+
     pygame.draw.circle(screen, red, (circle_x, circle_y), circle_radius)
-    draw_text(f"HP: {player_health}", pygame.font.Font(None, 36), white, 10, 10)
+
+    # Генерация пуль
+    for bullet in bullets:
+        pygame.draw.circle(screen, white, (bullet[0], bullet[1]), 5)  # Рисуем пули
+
+    # Эффект движения фона
+    background.scroll(0, star_speed)
+    if background.get_height() < screen_height:
+        create_gradient(background)
 
     pygame.display.update()
     clock.tick(60)
