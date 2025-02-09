@@ -75,6 +75,7 @@ def game_loop():
             self.speed = 3 if enemy_type == "kamikaze" else 2
             self.color = white if enemy_type == "kamikaze" else blue
             self.shoot_timer = 0  # Таймер для выстрелов
+            self.hit_timer = 0  # Таймер для мигания при атаке
 
         def move(self):
             if self.enemy_type == "kamikaze":
@@ -87,7 +88,21 @@ def game_loop():
                 self.shoot_timer += 1
                 if self.shoot_timer >= 60:  # Каждые 60 кадров стреляет
                     self.shoot_timer = 0
-                    enemy_bullets.append([self.rect.centerx, self.rect.bottom, circle_x, circle_y])
+                    # Вычисляем направление пули к игроку
+                    angle = math.atan2(circle_y - self.rect.centery, circle_x - self.rect.centerx)
+                    enemy_bullets.append([self.rect.centerx, self.rect.centery, angle])
+
+        def update_hit(self):
+            if self.hit_timer > 0:
+                self.hit_timer -= 1
+
+        def draw(self, screen, shake_x, shake_y):
+            # Если враг был атакован, меняем его цвет на красный
+            if self.hit_timer > 0:
+                color = red
+            else:
+                color = self.color
+            pygame.draw.rect(screen, color, self.rect.move(shake_x, shake_y))
 
     enemies = []
     enemy_spawn_rate = 50
@@ -135,7 +150,7 @@ def game_loop():
                     pygame.Rect(circle_x - 20, circle_y - 20, 40, 40)):
                 player_health -= 1
                 shake_intensity = 10
-                to_remove.append(enemy)
+                enemy.hit_timer = 10  # Включаем мигание на 10 кадров
 
             # Проверка попадания пуль
             for bullet in bullets[:]:
@@ -150,10 +165,9 @@ def game_loop():
         # Обновление движения вражеских пуль
         to_remove_bullets = []
         for bullet in enemy_bullets:
-            bx, by, target_x, target_y = bullet
+            bx, by, angle = bullet
 
             # Вычисление направления движения пули
-            angle = math.atan2(target_y - by, target_x - bx)
             speed = 4
             bx += int(math.cos(angle) * speed)
             by += int(math.sin(angle) * speed)
@@ -190,7 +204,8 @@ def game_loop():
         screen.blit(background, (shake_x, shake_y))
 
         for enemy in enemies:
-            pygame.draw.rect(screen, enemy.color, enemy.rect.move(shake_x, shake_y))
+            enemy.update_hit()
+            enemy.draw(screen, shake_x, shake_y)
 
         for bullet in bullets:
             pygame.draw.rect(screen, white, bullet.move(shake_x, shake_y))
