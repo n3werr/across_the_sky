@@ -15,6 +15,7 @@ black = (0, 0, 0)
 white = (255, 255, 255)
 red = (255, 0, 0)
 blue = (0, 0, 255)
+yellow = (255, 255, 0)
 
 
 def draw_text(text, font, color, x, y):
@@ -34,8 +35,7 @@ create_gradient(background)
 
 def game_over():
     font = pygame.font.Font(None, 50)
-    running = True
-    while running:
+    while True:
         screen.fill(black)
         draw_text("Игра окончена", font, red, screen_width // 3, 200)
         draw_text("Нажмите ENTER, чтобы заново", font, white, screen_width // 4, 280)
@@ -48,7 +48,7 @@ def game_over():
                 sys.exit()
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_RETURN:
-                    return  # Перезапуск игры
+                    return True  # Перезапуск игры
                 if event.key == pygame.K_ESCAPE:
                     pygame.quit()
                     sys.exit()
@@ -76,6 +76,7 @@ def game_loop():
             self.color = white if enemy_type == "kamikaze" else blue
             self.shoot_timer = 0  # Таймер для выстрелов
             self.hit_timer = 0  # Таймер для мигания при атаке
+            self.has_collided = False  # Флаг для предотвращения многократных столкновений
 
         def move(self):
             if self.enemy_type == "kamikaze":
@@ -108,6 +109,9 @@ def game_loop():
     enemy_spawn_rate = 50
     enemy_timer = 0
 
+    # Взрывы
+    explosions = []  # Список для хранения взрывов
+
     def spawn_enemy():
         x = random.randint(0, screen_width - 30)
         enemy_type = random.choice(["kamikaze", "shooter"])
@@ -115,6 +119,7 @@ def game_loop():
 
     clock = pygame.time.Clock()
     shake_intensity = 0
+    shake_duration = 0  # Длительность тряски
 
     while True:
         for event in pygame.event.get():
@@ -148,9 +153,15 @@ def game_loop():
             # Проверка столкновения камикадзе с игроком
             if enemy.enemy_type == "kamikaze" and enemy.rect.colliderect(
                     pygame.Rect(circle_x - 20, circle_y - 20, 40, 40)):
-                player_health -= 1
-                shake_intensity = 10
-                enemy.hit_timer = 10  # Включаем мигание на 10 кадров
+                if not enemy.has_collided:  # Проверяем, чтобы столкновение учитывалось только один раз
+                    player_health -= 1
+                    shake_intensity = 20  # Увеличиваем тряску
+                    shake_duration = 10  # Устанавливаем длительность тряски
+                    enemy.hit_timer = 10  # Включаем мигание на 10 кадров
+                    enemy.has_collided = True  # Устанавливаем флаг, чтобы избежать повторного учета столкновения
+                    # Добавляем взрыв
+                    explosions.append({"x": enemy.rect.centerx, "y": enemy.rect.centery, "timer": 10})
+                    to_remove.append(enemy)  # Удаляем камикадзе после взрыва
 
             # Проверка попадания пуль
             for bullet in bullets[:]:
@@ -175,7 +186,8 @@ def game_loop():
             if pygame.Rect(bx - 5, by - 5, 10, 10).colliderect(
                     pygame.Rect(circle_x - 20, circle_y - 20, 40, 40)):
                 player_health -= 1
-                shake_intensity = 10
+                shake_intensity = 20  # Увеличиваем тряску
+                shake_duration = 10  # Устанавливаем длительность тряски
                 to_remove_bullets.append(bullet)
 
             if by > screen_height or bx < 0 or bx > screen_width:
@@ -188,14 +200,17 @@ def game_loop():
 
         # Если здоровье закончилось — вызываем Game Over
         if player_health <= 0:
-            game_over()
-            return  # Перезапуск игры
+            if game_over():
+                return  # Перезапуск игры
+            else:
+                pygame.quit()
+                sys.exit()
 
         # Эффект тряски экрана
-        if shake_intensity > 0:
+        if shake_duration > 0:
             shake_x = random.randint(-shake_intensity, shake_intensity)
             shake_y = random.randint(-shake_intensity, shake_intensity)
-            shake_intensity -= 1
+            shake_duration -= 1
         else:
             shake_x, shake_y = 0, 0
 
@@ -213,6 +228,13 @@ def game_loop():
         for bullet in enemy_bullets:
             pygame.draw.circle(screen, red, (bullet[0] + shake_x, bullet[1] + shake_y), 5)
 
+        # Отрисовка взрывов
+        for explosion in explosions[:]:
+            pygame.draw.circle(screen, yellow, (explosion["x"] + shake_x, explosion["y"] + shake_y), 20)
+            explosion["timer"] -= 1
+            if explosion["timer"] <= 0:
+                explosions.remove(explosion)
+
         pygame.draw.circle(screen, red, (circle_x + shake_x, circle_y + shake_y), circle_radius)
         draw_text(f"HP: {player_health}", pygame.font.Font(None, 36), white, 10, 10)
 
@@ -220,4 +242,6 @@ def game_loop():
         clock.tick(60)
 
 
-game_loop()
+# Основной цикл игры
+while True:
+    game_loop()
