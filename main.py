@@ -73,8 +73,7 @@ def start_screen():
 
 
 def reset_game_state():
-    global bullets, enemy_bullets, enemies, explosions, player_health,
-    circle_x, circle_y, enemy_timer
+    global bullets, enemy_bullets, enemies, explosions, player_health, circle_x, circle_y, enemy_timer
 
     # Параметры игрока
     circle_x = screen_width // 2
@@ -90,8 +89,7 @@ def reset_game_state():
 
 
 def game_loop(best_score):
-    global circle_x, circle_y, player_health, bullets, enemy_bullets,
-    enemies, explosions, enemy_timer
+    global circle_x, circle_y, player_health, bullets, enemy_bullets, enemies, explosions, enemy_timer
     circle_radius = 20
     circle_speed = 7
 
