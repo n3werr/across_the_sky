@@ -17,6 +17,21 @@ red = (255, 0, 0)
 blue = (0, 0, 255)
 yellow = (255, 255, 0)
 
+best_score_file = "best_score.txt"
+
+
+def load_best_score():
+    try:
+        with open(best_score_file, "r") as file:
+            return int(file.read().strip())
+    except FileNotFoundError:
+        return 0
+
+
+def save_best_score(score):
+    with open(best_score_file, "w") as file:
+        file.write(str(score))
+
 
 def draw_text(text, font, color, x, y):
     surface = font.render(text, True, color)
@@ -33,13 +48,16 @@ background = pygame.Surface((screen_width, screen_height))
 create_gradient(background)
 
 
-def game_over():
-    font = pygame.font.Font(None, 50)
+def start_screen():
+    font = pygame.font.Font('KenVector Future.ttf', 40)
+    small_font = pygame.font.Font('KenVector Future.ttf', 30)
     while True:
         screen.fill(black)
-        draw_text("Игра окончена", font, red, screen_width // 3, 200)
-        draw_text("Нажмите ENTER, чтобы заново", font, white, screen_width // 4, 280)
-        draw_text("Нажмите ESC, чтобы выйти", font, white, screen_width // 4, 340)
+        draw_text("Across the Sky", font, white, screen_width // 4, 250)
+        draw_text("Press ENTER to start.",
+        small_font, white, screen_width // 5, 300)
+        draw_text("Press ESC to exit.",
+        small_font, white, screen_width // 5, 350)
         pygame.display.update()
 
         for event in pygame.event.get():
@@ -48,24 +66,54 @@ def game_over():
                 sys.exit()
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_RETURN:
-                    return True  # Перезапуск игры
+                    return  # Старт игры
                 if event.key == pygame.K_ESCAPE:
                     pygame.quit()
                     sys.exit()
 
 
-def game_loop():
+def reset_game_state():
+    global bullets, enemy_bullets, enemies, explosions, player_health,
+    circle_x, circle_y, enemy_timer
+
     # Параметры игрока
-    circle_radius = 20
     circle_x = screen_width // 2
-    circle_y = screen_height // 2
-    circle_speed = 7
+    circle_y = screen_height // 1.25
     player_health = 5
 
-    # Параметры пуль
+    # Очищаем списки
     bullets = []
-    bullet_speed = -10
     enemy_bullets = []
+    enemies = []
+    explosions = []
+    enemy_timer = 0
+
+
+def game_loop(best_score):
+    global circle_x, circle_y, player_health, bullets, enemy_bullets,
+    enemies, explosions, enemy_timer
+    circle_radius = 20
+    circle_speed = 7
+
+    # Загрузка текстуры игрока
+    player_image = pygame.image.load("img/player.png")
+    player_rect = player_image.get_rect(center=(circle_x, circle_y))
+
+    # Загрузка текстуры пули игрока
+    bullet_image = pygame.image.load("img/fire.png")
+    bullet_rect = bullet_image.get_rect()
+
+    # Загрузка текстур врагов
+    enemy_kamikaze_image = pygame.image.load("img/enemy1.png")
+    enemy_shooter_image = pygame.image.load("img/enemy2.png")
+
+    # Загрузка текстуры пуль врагов
+    enemy_bullet_image = pygame.image.load("img/fire2.png")
+
+    # Параметры пуль
+    bullet_speed = -10
+    player_shoot_delay = 6
+    player_shoot_timer = 0
 
     # Враги
     class Enemy:
@@ -73,10 +121,10 @@ def game_loop():
             self.rect = pygame.Rect(x, y, 30, 30)
             self.enemy_type = enemy_type
             self.speed = 3 if enemy_type == "kamikaze" else 2
-            self.color = white if enemy_type == "kamikaze" else blue
-            self.shoot_timer = 0  # Таймер для выстрелов
-            self.hit_timer = 0  # Таймер для мигания при атаке
-            self.has_collided = False  # Флаг для предотвращения многократных столкновений
+            self.image = enemy_kamikaze_image if enemy_type == "kamikaze" else enemy_shooter_image
+            self.shoot_timer = 0
+            self.hit_timer = 0
+            self.has_collided = False
 
         def move(self):
             if self.enemy_type == "kamikaze":
@@ -87,9 +135,8 @@ def game_loop():
             elif self.enemy_type == "shooter":
                 self.rect.y += self.speed
                 self.shoot_timer += 1
-                if self.shoot_timer >= 60:  # Каждые 60 кадров стреляет
+                if self.shoot_timer >= 120:
                     self.shoot_timer = 0
-                    # Вычисляем направление пули к игроку
                     angle = math.atan2(circle_y - self.rect.centery, circle_x - self.rect.centerx)
                     enemy_bullets.append([self.rect.centerx, self.rect.centery, angle])
 
@@ -98,19 +145,11 @@ def game_loop():
                 self.hit_timer -= 1
 
         def draw(self, screen, shake_x, shake_y):
-            # Если враг был атакован, меняем его цвет на красный
             if self.hit_timer > 0:
-                color = red
-            else:
-                color = self.color
-            pygame.draw.rect(screen, color, self.rect.move(shake_x, shake_y))
+                pass
+            screen.blit(self.image, self.rect.move(shake_x, shake_y))
 
-    enemies = []
     enemy_spawn_rate = 50
-    enemy_timer = 0
-
-    # Взрывы
-    explosions = []  # Список для хранения взрывов
 
     def spawn_enemy():
         x = random.randint(0, screen_width - 30)
@@ -119,129 +158,161 @@ def game_loop():
 
     clock = pygame.time.Clock()
     shake_intensity = 0
-    shake_duration = 0  # Длительность тряски
+    shake_duration = 0
 
+    score = 0  # Результат игрока
+
+    while True:  # Цикл игры
+        score = 0  # Сброс счёта при каждом новом запуске игры
+        reset_game_state()  # Сброс состояния игры
+        player_health = 5  # Восстановление здоровья игрока
+
+        while player_health > 0:
+            # Основной игровой цикл
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_LEFT] and circle_x - circle_radius > 0:
+                circle_x -= circle_speed
+            if keys[pygame.K_RIGHT] and circle_x + circle_radius < screen_width:
+                circle_x += circle_speed
+            if keys[pygame.K_UP] and circle_y - circle_radius > 0:
+                circle_y -= circle_speed
+            if keys[pygame.K_DOWN] and circle_y + circle_radius < screen_height:
+                circle_y += circle_speed
+
+            player_shoot_timer += 1
+            if keys[pygame.K_SPACE] and player_shoot_timer >= player_shoot_delay:
+                bullets.append(pygame.Rect(circle_x - 5, circle_y - 10, 10, 10))
+                player_shoot_timer = 0
+
+            bullets = [b.move(0, bullet_speed) for b in bullets if b.y > 0]
+
+            enemy_timer += 1
+            if enemy_timer >= enemy_spawn_rate:
+                spawn_enemy()
+                enemy_timer = 0
+
+            to_remove = []
+            for enemy in enemies:
+                enemy.move()
+
+                if enemy.enemy_type == "kamikaze" and enemy.rect.colliderect(
+                        pygame.Rect(circle_x - 20, circle_y - 20, 40, 40)):
+                    if not enemy.has_collided:
+                        player_health -= 1
+                        score -= 1
+                        shake_intensity = 20
+                        shake_duration = 10
+                        enemy.hit_timer = 10
+                        enemy.has_collided = True
+                        explosions.append({"x": enemy.rect.centerx, "y": enemy.rect.centery, "timer": 10})
+                        to_remove.append(enemy)
+
+                for bullet in bullets[:]:
+                    if enemy.rect.colliderect(bullet):
+                        bullets.remove(bullet)
+                        score += 1
+                        to_remove.append(enemy)
+
+            for enemy in to_remove:
+                if enemy in enemies:
+                    enemies.remove(enemy)
+
+            to_remove_bullets = []
+            for bullet in enemy_bullets:
+                bx, by, angle = bullet
+
+                speed = 4
+                bx += int(math.cos(angle) * speed)
+                by += int(math.sin(angle) * speed)
+
+                if pygame.Rect(bx - 5, by - 5, 10, 10).colliderect(
+                        pygame.Rect(circle_x - 20, circle_y - 20, 40, 40)):
+                    player_health -= 1
+                    shake_intensity = 20
+                    shake_duration = 10
+                    to_remove_bullets.append(bullet)
+
+                if by > screen_height or bx < 0 or bx > screen_width:
+                    to_remove_bullets.append(bullet)
+
+                bullet[0], bullet[1] = bx, by
+
+            for bullet in to_remove_bullets:
+                enemy_bullets.remove(bullet)
+
+            if player_health <= 0:  # Смерть и обновление рекорда
+                if score > best_score:
+                    best_score = score
+                    save_best_score(best_score)
+                if not game_over():
+                    return best_score
+                break
+
+            if shake_duration > 0:
+                shake_x = random.randint(-shake_intensity, shake_intensity)
+                shake_y = random.randint(-shake_intensity, shake_intensity)
+                shake_duration -= 1
+            else:
+                shake_x, shake_y = 0, 0
+
+            screen.fill(black)
+            screen.blit(background, (shake_x, shake_y))
+
+            for enemy in enemies:
+                enemy.update_hit()
+                enemy.draw(screen, shake_x, shake_y)
+
+            for bullet in bullets:
+                screen.blit(bullet_image, bullet.move(shake_x, shake_y))
+
+            for bullet in enemy_bullets:
+                screen.blit(enemy_bullet_image, (bullet[0] + shake_x - 10, bullet[1] + shake_y - 10))
+
+            for explosion in explosions[:]:
+                pygame.draw.circle(screen, yellow, (explosion["x"] + shake_x, explosion["y"] + shake_y), 20)
+                explosion["timer"] -= 1
+                if explosion["timer"] <= 0:
+                    explosions.remove(explosion)
+
+            player_rect.center = (circle_x + shake_x, circle_y + shake_y)
+            screen.blit(player_image, player_rect)
+
+            draw_text(f"HP: {player_health}", pygame.font.Font('KenVector Future.ttf', 36), white, 10, 10)
+            draw_text(f"Score: {score}", pygame.font.Font('KenVector Future.ttf', 36), white, 10, 50)
+            draw_text(f"Best Score: {best_score}", pygame.font.Font('KenVector Future.ttf', 36), white, 10, 90)
+
+            pygame.display.update()
+            clock.tick(60)
+
+
+def game_over():
+    font = pygame.font.Font('KenVector Future.ttf', 40)
+    small_font = pygame.font.Font('KenVector Future.ttf', 30)
     while True:
+        screen.fill(black)
+        draw_text("Game Over", font, red, screen_width // 4, 250)
+        draw_text("Press ENTER to start over.", small_font, white, screen_width // 5, 300)
+        draw_text("Press ESC to exit.", small_font, white, screen_width // 5, 350)
+        pygame.display.update()
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_LEFT] and circle_x - circle_radius > 0:
-            circle_x -= circle_speed
-        if keys[pygame.K_RIGHT] and circle_x + circle_radius < screen_width:
-            circle_x += circle_speed
-        if keys[pygame.K_UP] and circle_y - circle_radius > 0:
-            circle_y -= circle_speed
-        if keys[pygame.K_DOWN] and circle_y + circle_radius < screen_height:
-            circle_y += circle_speed
-        if keys[pygame.K_SPACE]:
-            bullets.append(pygame.Rect(circle_x - 5, circle_y - 10, 10, 10))
-
-        bullets = [b.move(0, bullet_speed) for b in bullets if b.y > 0]
-
-        enemy_timer += 1
-        if enemy_timer >= enemy_spawn_rate:
-            spawn_enemy()
-            enemy_timer = 0
-
-        to_remove = []
-        for enemy in enemies:
-            enemy.move()
-
-            # Проверка столкновения камикадзе с игроком
-            if enemy.enemy_type == "kamikaze" and enemy.rect.colliderect(
-                    pygame.Rect(circle_x - 20, circle_y - 20, 40, 40)):
-                if not enemy.has_collided:  # Проверяем, чтобы столкновение учитывалось только один раз
-                    player_health -= 1
-                    shake_intensity = 20  # Увеличиваем тряску
-                    shake_duration = 10  # Устанавливаем длительность тряски
-                    enemy.hit_timer = 10  # Включаем мигание на 10 кадров
-                    enemy.has_collided = True  # Устанавливаем флаг, чтобы избежать повторного учета столкновения
-                    # Добавляем взрыв
-                    explosions.append({"x": enemy.rect.centerx, "y": enemy.rect.centery, "timer": 10})
-                    to_remove.append(enemy)  # Удаляем камикадзе после взрыва
-
-            # Проверка попадания пуль
-            for bullet in bullets[:]:
-                if enemy.rect.colliderect(bullet):
-                    bullets.remove(bullet)
-                    to_remove.append(enemy)
-
-        for enemy in to_remove:
-            if enemy in enemies:
-                enemies.remove(enemy)
-
-        # Обновление движения вражеских пуль
-        to_remove_bullets = []
-        for bullet in enemy_bullets:
-            bx, by, angle = bullet
-
-            # Вычисление направления движения пули
-            speed = 4
-            bx += int(math.cos(angle) * speed)
-            by += int(math.sin(angle) * speed)
-
-            if pygame.Rect(bx - 5, by - 5, 10, 10).colliderect(
-                    pygame.Rect(circle_x - 20, circle_y - 20, 40, 40)):
-                player_health -= 1
-                shake_intensity = 20  # Увеличиваем тряску
-                shake_duration = 10  # Устанавливаем длительность тряски
-                to_remove_bullets.append(bullet)
-
-            if by > screen_height or bx < 0 or bx > screen_width:
-                to_remove_bullets.append(bullet)
-
-            bullet[0], bullet[1] = bx, by  # Обновление координат пули
-
-        for bullet in to_remove_bullets:
-            enemy_bullets.remove(bullet)
-
-        # Если здоровье закончилось — вызываем Game Over
-        if player_health <= 0:
-            if game_over():
-                return  # Перезапуск игры
-            else:
-                pygame.quit()
-                sys.exit()
-
-        # Эффект тряски экрана
-        if shake_duration > 0:
-            shake_x = random.randint(-shake_intensity, shake_intensity)
-            shake_y = random.randint(-shake_intensity, shake_intensity)
-            shake_duration -= 1
-        else:
-            shake_x, shake_y = 0, 0
-
-        # Отрисовка
-        screen.fill(black)
-        screen.blit(background, (shake_x, shake_y))
-
-        for enemy in enemies:
-            enemy.update_hit()
-            enemy.draw(screen, shake_x, shake_y)
-
-        for bullet in bullets:
-            pygame.draw.rect(screen, white, bullet.move(shake_x, shake_y))
-
-        for bullet in enemy_bullets:
-            pygame.draw.circle(screen, red, (bullet[0] + shake_x, bullet[1] + shake_y), 5)
-
-        # Отрисовка взрывов
-        for explosion in explosions[:]:
-            pygame.draw.circle(screen, yellow, (explosion["x"] + shake_x, explosion["y"] + shake_y), 20)
-            explosion["timer"] -= 1
-            if explosion["timer"] <= 0:
-                explosions.remove(explosion)
-
-        pygame.draw.circle(screen, red, (circle_x + shake_x, circle_y + shake_y), circle_radius)
-        draw_text(f"HP: {player_health}", pygame.font.Font(None, 36), white, 10, 10)
-
-        pygame.display.update()
-        clock.tick(60)
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_RETURN:
+                    return True
+                if event.key == pygame.K_ESCAPE:
+                    return False
 
 
-# Основной цикл игры
-while True:
-    game_loop()
+best_score = load_best_score()
+
+start_screen()
+reset_game_state()
+best_score = game_loop(best_score)
